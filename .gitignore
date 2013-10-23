@@ -1,0 +1,6 @@
+#The Debug Folders
+/Debug/
+/DrXu_App/Debug/
+#The huge garbage
+/ipch/
+*.sdf
