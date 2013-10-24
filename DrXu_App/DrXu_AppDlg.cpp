@@ -111,13 +111,15 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 										  0,
 										  NULL,
 										  OPEN_EXISTING,
-										  FILE_ATTRIBUTE_NORMAL,
+										  //FILE_ATTRIBUTE_NORMAL,
+										  0,
 										  NULL);
 		if ( this->g_hDrXuDevice != INVALID_HANDLE_VALUE )
 			::AfxMessageBox(L"驱动加载成功");
 		else
 		{
 			::AfxMessageBox(L"无法访问设备对象");
+			TRACE("[CreateFileA] Faild in [InitDialog],Last Error:%d",GetLastError());
 			ExitProcess(-1);
 		}
 	}
