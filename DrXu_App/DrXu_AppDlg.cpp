@@ -7,7 +7,15 @@
 #include "DrXu_AppDlg.h"
 #include "afxdialogex.h"
 #include <WinSvc.h>
+
+
+#ifndef _extra_
+#define _extra_
 #include "extra.h"
+#endif 
+
+
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -97,14 +105,29 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 	// 从当前目录下加载驱动程序
 	if ( LoadDriverFromFile("DrXu.sys" ) )
 	{
-		::AfxMessageBox(L"驱动加载成功");
+		//打开设备句柄
+		this->g_hDrXuDevice = CreateFileA(SYMBOLIC_LINK_DRXU,
+										  GENERIC_READ | GENERIC_WRITE,
+										  0,
+										  NULL,
+										  OPEN_EXISTING,
+										  FILE_ATTRIBUTE_NORMAL,
+										  NULL);
+		if ( this->g_hDrXuDevice != INVALID_HANDLE_VALUE )
+			::AfxMessageBox(L"驱动加载成功");
+		else
+		{
+			::AfxMessageBox(L"无法访问设备对象");
+			ExitProcess(-1);
+		}
 	}
 	else
 	{
 		::AfxMessageBox(L"驱动加载失败");
 		ExitProcess(-1);
 	}
-
+	// 关闭驱动设备对象
+	CloseHandle(this->g_hDrXuDevice);
 
 	// 将“关于...”菜单项添加到系统菜单中。
 

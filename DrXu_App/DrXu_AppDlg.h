@@ -37,4 +37,6 @@ public:
 private:
 	// 停止服务并卸下驱动
 	bool StopService(void);
+	// 全局设备句柄，保存打开驱动的句柄
+	HANDLE g_hDrXuDevice;
 };
