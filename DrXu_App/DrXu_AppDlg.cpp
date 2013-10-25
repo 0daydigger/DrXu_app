@@ -106,7 +106,7 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 	if ( LoadDriverFromFile("DrXu.sys" ) )
 	{
 		//打开设备句柄
-		this->g_hDrXuDevice = CreateFileA(SYMBOLIC_LINK_DRXU,
+		this->g_hDrXuDevice = CreateFile(SYMBOLIC_LINK_DRXU,
 										  GENERIC_ALL,//GENERIC_READ | GENERIC_WRITE,
 										  0,
 										  NULL,
@@ -249,7 +249,7 @@ bool CDrXu_AppDlg::LoadDriverFromFile(char* sysFileName)
         TRACE("找不到RC句柄\n");
         if(GetLastError()== ERROR_SERVICE_EXISTS)
         {
-            rh = OpenServiceA(sh,sysFileName,SERVICE_ALL_ACCESS);
+            rh = OpenServiceA(sh,DRXU_SERVICE_NAME,SERVICE_ALL_ACCESS);
             if(!rh)
             {
                 CloseServiceHandle(sh);
@@ -298,11 +298,11 @@ BOOL CDrXu_AppDlg::DestroyWindow()
 {
 	if ( this->StopService() )
 	{
-		AfxMessageBox(L"成功卸载驱动");
+		AfxMessageBox(L"[DestroyWindow]成功卸载驱动");
 	}
 	else
 	{
-		AfxMessageBox(L"卸载驱动失败 :(");
+		AfxMessageBox(L"[DestroyWindow]卸载驱动失败 :(");
 	}
 	return CDialogEx::DestroyWindow();
 }
@@ -318,7 +318,7 @@ bool CDrXu_AppDlg::StopService(void)
         TRACE( "[StopService]:打开SCManager失败");
         return false;
     }
-    // 打开www服务。
+    // 打开服务。
     SC_HANDLE hSvc = ::OpenServiceA( hSC, DRXU_SERVICE_NAME,
         SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_STOP);
     if( hSvc == NULL)
@@ -343,7 +343,7 @@ bool CDrXu_AppDlg::StopService(void)
         if( ::ControlService( hSvc, 
           SERVICE_CONTROL_STOP, &status) == FALSE)
         {
-            TRACE( "stop service error。");
+            TRACE( "[StopService]停止服务失败");
             ::CloseServiceHandle( hSvc);
             ::CloseServiceHandle( hSC);
             return false;
@@ -361,7 +361,11 @@ bool CDrXu_AppDlg::StopService(void)
             }
         }
     }
-    ::CloseServiceHandle( hSvc);
-    ::CloseServiceHandle( hSC);
-	return false;
+	else
+	{
+		TRACE("[StopService]服务并未运行,status.dwCurrentState:%d",status.dwCurrentState);
+	    ::CloseServiceHandle( hSvc);
+	    ::CloseServiceHandle( hSC);
+		return true;
+	}
 }
