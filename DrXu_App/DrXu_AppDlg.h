@@ -39,4 +39,6 @@ private:
 	bool StopService(void);
 	// 全局设备句柄，保存打开驱动的句柄
 	HANDLE g_hDrXuDevice;
+public:
+	afx_msg void OnBnClickedOk();
 };

@@ -93,6 +93,7 @@ BEGIN_MESSAGE_MAP(CDrXu_AppDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDOK, &CDrXu_AppDlg::OnBnClickedOk)
 END_MESSAGE_MAP()
 
 
@@ -368,4 +369,11 @@ bool CDrXu_AppDlg::StopService(void)
 	    ::CloseServiceHandle( hSC);
 		return true;
 	}
+}
+
+
+void CDrXu_AppDlg::OnBnClickedOk()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	//CDialogEx::OnOK();
 }
