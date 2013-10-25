@@ -375,5 +375,6 @@ bool CDrXu_AppDlg::StopService(void)
 void CDrXu_AppDlg::OnBnClickedOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	
 	//CDialogEx::OnOK();
 }
