@@ -107,12 +107,11 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 	{
 		//打开设备句柄
 		this->g_hDrXuDevice = CreateFileA(SYMBOLIC_LINK_DRXU,
-										  GENERIC_READ | GENERIC_WRITE,
+										  GENERIC_ALL,//GENERIC_READ | GENERIC_WRITE,
 										  0,
 										  NULL,
 										  OPEN_EXISTING,
-										  //FILE_ATTRIBUTE_NORMAL,
-										  0,
+										  FILE_ATTRIBUTE_NORMAL,
 										  NULL);
 		if ( this->g_hDrXuDevice != INVALID_HANDLE_VALUE )
 			::AfxMessageBox(L"驱动加载成功");
@@ -120,6 +119,10 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 		{
 			::AfxMessageBox(L"无法访问设备对象");
 			TRACE("[CreateFileA] Faild in [InitDialog],Last Error:%d",GetLastError());
+			TRACE("[CreateFileA] Faild in [InitDialog],g_hDrXuDevice:%d",this->g_hDrXuDevice);
+			
+			if ( this->StopService() )
+				::AfxMessageBox(L"驱动服务停止");
 			ExitProcess(-1);
 		}
 	}
@@ -243,20 +246,20 @@ bool CDrXu_AppDlg::LoadDriverFromFile(char* sysFileName)
                                  );
     if(!rh)
     {
-        TRACE("rh not found\n");
+        TRACE("找不到RC句柄\n");
         if(GetLastError()== ERROR_SERVICE_EXISTS)
         {
             rh = OpenServiceA(sh,sysFileName,SERVICE_ALL_ACCESS);
             if(!rh)
             {
                 CloseServiceHandle(sh);
-                TRACE("service already exists and cannot be open\n");
+                TRACE("存在服务，但是无法打开\n");
                 return false;
             }
         }
         else
         {
-            TRACE("cannot create service!\n");
+            TRACE("无法创建服务!\n");
             TRACE("GetLastError:%d\n",GetLastError());
             CloseServiceHandle(sh);
             return false;
@@ -265,8 +268,8 @@ bool CDrXu_AppDlg::LoadDriverFromFile(char* sysFileName)
     //服务启动
     if(rh)
     {
-	  TRACE("Rh got %d\n",rh);
-	  TRACE("%d\n",GetLastError());
+	  TRACE("[LoadDriverFromFile]:rh %d\n",rh);
+	  TRACE("[LoadDriverFromFile] GetLastError:%d\n",GetLastError());
       if(StartService(rh,0,NULL) == 0)
       {
          if(GetLastError()== ERROR_SERVICE_ALREADY_RUNNING)
@@ -275,7 +278,7 @@ bool CDrXu_AppDlg::LoadDriverFromFile(char* sysFileName)
          }
          else
          {
-              TRACE("Cannot start service\n");
+              TRACE("[LoadDriverFromFile]:无法启动服务\n");
               TRACE("GetLastError:%d\n",GetLastError());
               CloseServiceHandle(sh);
               CloseServiceHandle(rh);
@@ -312,7 +315,7 @@ bool CDrXu_AppDlg::StopService(void)
                         NULL, GENERIC_EXECUTE);
     if( hSC == NULL)
     {
-        TRACE( "open SCManager error");
+        TRACE( "[StopService]:打开SCManager失败");
         return false;
     }
     // 打开www服务。
@@ -320,7 +323,7 @@ bool CDrXu_AppDlg::StopService(void)
         SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_STOP);
     if( hSvc == NULL)
     {
-        TRACE( "Open Service Error。");
+        TRACE( "[StopService]:打开服务异常。");
         ::CloseServiceHandle( hSC);
         return false;
     }
@@ -328,7 +331,7 @@ bool CDrXu_AppDlg::StopService(void)
     SERVICE_STATUS status;
     if( ::QueryServiceStatus( hSvc, &status) == FALSE)
     {
-        TRACE( "Get Service state error。");
+        TRACE( "[StopService]:无法获得服务状态");
         ::CloseServiceHandle( hSvc);
         ::CloseServiceHandle( hSC);
         return false;
