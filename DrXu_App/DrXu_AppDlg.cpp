@@ -115,12 +115,15 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 										  FILE_ATTRIBUTE_NORMAL,
 										  NULL);
 		if ( this->g_hDrXuDevice != INVALID_HANDLE_VALUE )
+		{
 			::AfxMessageBox(L"驱动加载成功");
+			TRACE("[CreateFile] Success,g_hDrXuDevice is %d",this->g_hDrXuDevice);
+		}
 		else
 		{
 			::AfxMessageBox(L"无法访问设备对象");
-			TRACE("[CreateFileA] Faild in [InitDialog],Last Error:%d",GetLastError());
-			TRACE("[CreateFileA] Faild in [InitDialog],g_hDrXuDevice:%d",this->g_hDrXuDevice);
+			TRACE("[CreateFile] Faild in [InitDialog],Last Error:%d",GetLastError());
+			TRACE("[CreateFile] Faild in [InitDialog],g_hDrXuDevice:%d",this->g_hDrXuDevice);
 			
 			if ( this->StopService() )
 				::AfxMessageBox(L"驱动服务停止");
@@ -133,7 +136,8 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 		ExitProcess(-1);
 	}
 	// 关闭驱动设备对象
-	CloseHandle(this->g_hDrXuDevice);
+	
+	// CloseHandle(this->g_hDrXuDevice); 2013.10.26 0:26 貌似这有个bug
 
 	// 将“关于...”菜单项添加到系统菜单中。
 
@@ -311,7 +315,11 @@ BOOL CDrXu_AppDlg::DestroyWindow()
 
 // 停止服务并卸下驱动
 bool CDrXu_AppDlg::StopService(void)
-{    // 打开服务管理对象
+{ 
+	// 关闭内核设备
+	CloseHandle(this->g_hDrXuDevice);
+	TRACE("[StopService]:已经卸下设备句柄g_hDrXuDevice");
+	// 打开服务管理对象
     SC_HANDLE hSC = ::OpenSCManager( NULL, 
                         NULL, GENERIC_EXECUTE);
     if( hSC == NULL)
@@ -361,6 +369,7 @@ bool CDrXu_AppDlg::StopService(void)
                 return true;
             }
         }
+		return false;
     }
 	else
 	{
@@ -375,6 +384,27 @@ bool CDrXu_AppDlg::StopService(void)
 void CDrXu_AppDlg::OnBnClickedOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	
+	UCHAR InputBuffer[10];
+    UCHAR OutputBuffer[10];
+    DWORD dwOutput;
+    
+	::AfxMessageBox(L"Entered");
+    memset(InputBuffer, 0xAA, 10);
+	BOOL bRet = ::DeviceIoControl(this->g_hDrXuDevice, IOCTL_TEST, InputBuffer, 10, &OutputBuffer, 10, &dwOutput, NULL);
+    if (bRet)
+    {
+        TRACE("Output buffer:%d bytes\n",dwOutput);
+        for (int i=0;i<(int)dwOutput;i++)
+        {
+            TRACE("%02X ",OutputBuffer[i]);
+        }
+        TRACE("\n");
+    }
+	else
+	{
+		TRACE("[DeviceIoControl]bRet faild, value is %d, ",bRet);
+		TRACE("[DeviceIoControl]GetLastError() is %d",GetLastError());
+		TRACE("g_hDrXuDevice value is %d",this->g_hDrXuDevice);
+	}
 	//CDialogEx::OnOK();
 }
