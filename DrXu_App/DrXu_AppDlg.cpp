@@ -384,6 +384,7 @@ bool CDrXu_AppDlg::StopService(void)
 void CDrXu_AppDlg::OnBnClickedOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	/* 打包：输入缓冲，输出缓冲，IOCONTROL WORD */
 	UCHAR InputBuffer[10];
     UCHAR OutputBuffer[10];
     DWORD dwOutput;
