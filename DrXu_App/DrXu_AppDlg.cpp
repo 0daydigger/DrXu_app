@@ -47,13 +47,22 @@ HANDLE		g_hEventNtLoadDriver;
 
 
 /* 其他函数定义区 */
-void ThreadWaitForNtLoadDriverCall(void *dummyParameter)
+void ThreadWaitForNtLoadDriverCall(LPVOID phDeviceHandle)
 {
+	DWORD dwBytesReturned = 0;
+	UCHAR ustrReadFromKernelBuffer[1024] = {0};
+	UCHAR ustrWriteToKernelBuffer[1024] = {0};
+
+	HANDLE hDeviceHandle = *(HANDLE*)phDeviceHandle;
+	TRACE("[THREAD_ThreadWaitForNtLoadDriverCall]:捕获hDeviceHandle:%d",hDeviceHandle);
+
 	TRACE("线程函数[ThreadWaitForNtLoadDriverCall]:Entered!While循环马上开始");
 	while(true)
 	{
 		DWORD dwWaitStatus = 0;
 		dwWaitStatus = WaitForSingleObject(g_hEventNtLoadDriver,INFINITE);
+
+		//TODO:在这里发送请求，获取NtDllCall信息
 		if ( dwWaitStatus != WAIT_OBJECT_0 )
 		{
 			TRACE("线程函数[ThreadWaitForNtLoadDriverCall]：dwWaitStatus失败！");
@@ -62,7 +71,38 @@ void ThreadWaitForNtLoadDriverCall(void *dummyParameter)
 		}
 		else
 		{
-			::AfxMessageBox(L"g_hEventNtLoadDriver被唤醒！");
+			TRACE("g_hEventNtLoadDriver被唤醒！NtDriverLoad Called");
+			TRACE("[THREAD_ThreadWaitForNtLoadDriverCall]发送IOCTL_DRXU_DRIVERNAME_REQUEST请求");
+			if (DeviceIoControl(hDeviceHandle, 
+						 IOCTL_DRXU_DRIVERNAME_REQUEST, 
+						 NULL, 0, 
+						 ustrReadFromKernelBuffer, sizeof(ustrReadFromKernelBuffer), 
+				 		 &dwBytesReturned, 
+						 NULL) )
+			{
+				TRACE("[THREAD_ThreadWaitForNtLoadDriverCall]获得驱动路径成功，为%s",ustrReadFromKernelBuffer);
+				//TODO:这里弹出对话框让用户选择是或者否，为了测试起见这里就一概填是了
+				//代表TRUE
+				
+	//			ustrWriteToKernelBuffer[0] = 0;
+				UINT uRet = MessageBox(0,L"有驱动要加载！允许其加载？",L"许医生的警告", MB_OKCANCEL );
+				if ( uRet == IDOK )
+					ustrWriteToKernelBuffer[0] = 1;
+				else
+					ustrWriteToKernelBuffer[0] = 0;
+
+				TRACE("[THREAD_ThreadWaitForNtLoadDriverCall]发送IOCTL_DRXU_DRIVERLOAD_REQUEST请求");
+				DeviceIoControl(hDeviceHandle, 
+						 IOCTL_DRXU_DRIVERLOAD_REQUEST, 
+						 ustrWriteToKernelBuffer, sizeof(ustrWriteToKernelBuffer), 
+						 NULL, 0, 
+				 		 &dwBytesReturned, 
+						 NULL);
+			}
+			else
+			{
+				TRACE("[THREAD_ThreadWaitForNtLoadDriverCall]发送IOCTL_DRXU_DRIVERNAME_REQUEST请求失败");
+			}
 		}
 		ResetEvent(g_hEventNtLoadDriver);
 	}
@@ -152,7 +192,7 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 			{
 				::AfxMessageBox(L"成功创建内核事件NtLoadDriverEvent!");
 				TRACE("[OnInitDialog]:启动新线程");
-				_beginthread(ThreadWaitForNtLoadDriverCall,1024,NULL);
+				_beginthread(ThreadWaitForNtLoadDriverCall,1024,&(this->g_hDrXuDevice));
 				//TODO:通知内核进行事件同步
 				/* if ( this->SendBufferToDevice(this->g_hDrXuDevice, //设备句柄
 										IOCTL_DRXU_OPEN_EVENT_NtLoadDriver, //控制消息
