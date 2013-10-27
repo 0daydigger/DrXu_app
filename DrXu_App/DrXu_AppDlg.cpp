@@ -84,8 +84,17 @@ void ThreadWaitForNtLoadDriverCall(LPVOID phDeviceHandle)
 				//TODO:这里弹出对话框让用户选择是或者否，为了测试起见这里就一概填是了
 				//代表TRUE
 				
-	//			ustrWriteToKernelBuffer[0] = 0;
-				UINT uRet = MessageBox(0,L"有驱动要加载！允许其加载？",L"许医生的警告", MB_OKCANCEL );
+	//			ustrWriteToKernelBuffer[0] = 0代表拒绝加载
+				/* 请注意这里用的全是ANSI版本的API和变量！程序本身是Unicode的！ */
+				CStringA strDriverPath;
+				//CString.format("%s",char*);Char*与CString转换，注意这里的CString一定是CStringA
+				
+				strDriverPath.Format("加载驱动的路径信息为:%s",ustrReadFromKernelBuffer);
+				
+				MessageBoxA(0,strDriverPath,"许医生的警告：有驱动试图加载",MB_ICONEXCLAMATION);
+				/* 讨厌的Ansi区结束啦！O(∩_∩)O */
+				
+				UINT uRet = MessageBox(0,L"有驱动要加载！允许其加载？",L"许医生的警告", MB_OKCANCEL|MB_ICONEXCLAMATION  );
 				if ( uRet == IDOK )
 					ustrWriteToKernelBuffer[0] = 1;
 				else
