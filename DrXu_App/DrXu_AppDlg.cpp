@@ -40,8 +40,38 @@ typedef VOID (CALLBACK* RTLINITUNICODESTRING)(PUNICODE_STRING,PCWSTR);
 RTLINITUNICODESTRING RtlInitUnicodeString;
 
 SYSTEM_LOAD_AND_CALL_IMAGE gregsImage;
+
+//由于实在不想写友元函数了……这个事件句柄是用来通知应用有NtLoadDriver调用的
+HANDLE		g_hEventNtLoadDriver;
 /* 结构定义完毕 */
 
+
+/* 其他函数定义区 */
+void ThreadWaitForNtLoadDriverCall(void *dummyParameter)
+{
+	TRACE("线程函数[ThreadWaitForNtLoadDriverCall]:Entered!While循环马上开始");
+	while(true)
+	{
+		DWORD dwWaitStatus = 0;
+		dwWaitStatus = WaitForSingleObject(g_hEventNtLoadDriver,INFINITE);
+		if ( dwWaitStatus != WAIT_OBJECT_0 )
+		{
+			TRACE("线程函数[ThreadWaitForNtLoadDriverCall]：dwWaitStatus失败！");
+			TRACE("dwWaitStatus:%d",dwWaitStatus);
+			TRACE("GetLastError:%d",GetLastError());
+		}
+		else
+		{
+			::AfxMessageBox(L"g_hEventNtLoadDriver被唤醒！");
+		}
+		ResetEvent(g_hEventNtLoadDriver);
+	}
+}
+
+
+
+
+/* 窗口类定义区 */
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
 class CAboutDlg : public CDialogEx
@@ -106,30 +136,54 @@ BOOL CDrXu_AppDlg::OnInitDialog()
 	// 从当前目录下加载驱动程序
 	if ( LoadDriverFromFile("DrXu.sys" ) )
 	{
-		//打开设备句柄
-		this->g_hDrXuDevice = CreateFile(SYMBOLIC_LINK_DRXU,
-										  GENERIC_ALL,//GENERIC_READ | GENERIC_WRITE,
-										  0,
-										  NULL,
-										  OPEN_EXISTING,
-										  FILE_ATTRIBUTE_NORMAL,
-										  NULL);
-		if ( this->g_hDrXuDevice != INVALID_HANDLE_VALUE )
+		if ( !this->SaveDeviceHandle() )
 		{
-			::AfxMessageBox(L"驱动加载成功");
-			TRACE("[CreateFile] Success,g_hDrXuDevice is %d",this->g_hDrXuDevice);
+			::AfxMessageBox(L"打开设备失败");
+			TRACE("[OnInitDialog] Faild with [SaveDeviceHandle],GetLastError:%d",GetLastError());
+			ExitProcess(-1);
 		}
 		else
 		{
-			::AfxMessageBox(L"无法访问设备对象");
-			TRACE("[CreateFile] Faild in [InitDialog],Last Error:%d",GetLastError());
-			TRACE("[CreateFile] Faild in [InitDialog],g_hDrXuDevice:%d",this->g_hDrXuDevice);
-			
-			if ( this->StopService() )
-				::AfxMessageBox(L"驱动服务停止");
-			ExitProcess(-1);
+			::AfxMessageBox(L"成功加载驱动");
+
+			// TODO:创建事件并传递给驱动，让驱动保存
+			TRACE("[OnInitDialog]创建事件");
+			if( this->CreateNtLoadDriverEvent() )
+			{
+				::AfxMessageBox(L"成功创建内核事件NtLoadDriverEvent!");
+				TRACE("[OnInitDialog]:启动新线程");
+				_beginthread(ThreadWaitForNtLoadDriverCall,1024,NULL);
+				//TODO:通知内核进行事件同步
+				/* if ( this->SendBufferToDevice(this->g_hDrXuDevice, //设备句柄
+										IOCTL_DRXU_OPEN_EVENT_NtLoadDriver, //控制消息
+										NULL,0) ) */
+				DWORD bytesReturned = 0;
+				if (DeviceIoControl(this->g_hDrXuDevice, 
+						 IOCTL_DRXU_OPEN_EVENT_NtLoadDriver, 
+						 NULL, 0, 
+						 NULL, 0, 
+				 		 &bytesReturned, 
+						 NULL) )
+				{
+					//TODO:创建新线程挂起，等待返回
+					TRACE("[OnInitDialog]向内核传递事件完成！");
+				}
+				else
+				{
+					::AfxMessageBox(L"内核获取事件失败");
+					TRACE("[OnInitDialog]:设备打开g_hEventNtLoadDriver失败");
+					TRACE("GetLastError:%d",GetLastError());
+					ExitProcess(-1);
+				}	
+			}
+			else
+			{
+				::AfxMessageBox(L"与内核通信失败");
+				TRACE("[OnInitDialog] Faild with [SaveDeviceHandle],GetLastError:%d",GetLastError());
+				ExitProcess(-1);
+			}
 		}
-	}
+	}	
 	else
 	{
 		::AfxMessageBox(L"驱动加载失败");
@@ -231,14 +285,14 @@ bool CDrXu_AppDlg::LoadDriverFromFile(char* sysFileName)
     SC_HANDLE sh = OpenSCManager(NULL,NULL,SC_MANAGER_ALL_ACCESS);
     if(!sh)
     {
-     //   printf("Faild to Open Service Manager!\n");
-     //   printf("GetLastError:%d\n",GetLastError());
+     	TRACE("[LoadDriverFromFile]Faild to Open Service Manager!\n");
+        TRACE("[LoadDriverFromFile]GetLastError:%d\n",GetLastError());
         return false;
     }
     ///获取当前exe所在路径
     GetCurrentDirectoryA(512,aCurrentDirectory);
     _snprintf(sysPath,1022,"%s\\%s",aCurrentDirectory,sysFileName);
-    TRACE("path is:%s\n",sysPath);
+    TRACE("[LoadDriverFromFile]:path is:%s\n",sysPath);
     SC_HANDLE rh = CreateServiceA(sh,
                                  DRXU_SERVICE_NAME,
                                  DRXU_SERVICE_NAME,
@@ -251,21 +305,22 @@ bool CDrXu_AppDlg::LoadDriverFromFile(char* sysFileName)
                                  );
     if(!rh)
     {
-        TRACE("找不到RC句柄\n");
+        TRACE("[LoadDriverFromFile]找不到RC句柄\n");
         if(GetLastError()== ERROR_SERVICE_EXISTS)
         {
             rh = OpenServiceA(sh,DRXU_SERVICE_NAME,SERVICE_ALL_ACCESS);
             if(!rh)
             {
                 CloseServiceHandle(sh);
-                TRACE("存在服务，但是无法打开\n");
+                TRACE("[LoadDriverFromFile]存在服务，但是无法打开");
+				TRACE("GetLastError:%d",GetLastError());
                 return false;
             }
         }
         else
         {
-            TRACE("无法创建服务!\n");
-            TRACE("GetLastError:%d\n",GetLastError());
+            TRACE("[LoadDriverFromFile]无法创建服务!\n");
+            TRACE("[LoadDriverFromFile]GetLastError:%d\n",GetLastError());
             CloseServiceHandle(sh);
             return false;
         }
@@ -307,7 +362,7 @@ BOOL CDrXu_AppDlg::DestroyWindow()
 	}
 	else
 	{
-		AfxMessageBox(L"[DestroyWindow]卸载驱动失败 :(");
+		AfxMessageBox(L"[DestroyWindow]卸载驱动失败 ");
 	}
 	return CDialogEx::DestroyWindow();
 }
@@ -325,14 +380,16 @@ bool CDrXu_AppDlg::StopService(void)
     if( hSC == NULL)
     {
         TRACE( "[StopService]:打开SCManager失败");
+		TRACE("GetLastError:%d",GetLastError());
         return false;
     }
-    // 打开服务。
+    // 打开服务。有BUG那肯定就是这！因为用的是OpenServiceA!
     SC_HANDLE hSvc = ::OpenServiceA( hSC, DRXU_SERVICE_NAME,
         SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_STOP);
     if( hSvc == NULL)
     {
         TRACE( "[StopService]:打开服务异常。");
+		TRACE("GetLastError:%d",GetLastError());
         ::CloseServiceHandle( hSC);
         return false;
     }
@@ -341,6 +398,7 @@ bool CDrXu_AppDlg::StopService(void)
     if( ::QueryServiceStatus( hSvc, &status) == FALSE)
     {
         TRACE( "[StopService]:无法获得服务状态");
+		TRACE("GetLastError:%d",GetLastError());
         ::CloseServiceHandle( hSvc);
         ::CloseServiceHandle( hSC);
         return false;
@@ -353,6 +411,7 @@ bool CDrXu_AppDlg::StopService(void)
           SERVICE_CONTROL_STOP, &status) == FALSE)
         {
             TRACE( "[StopService]停止服务失败");
+			TRACE("GetLastError:%d",GetLastError());
             ::CloseServiceHandle( hSvc);
             ::CloseServiceHandle( hSC);
             return false;
@@ -374,6 +433,7 @@ bool CDrXu_AppDlg::StopService(void)
 	else
 	{
 		TRACE("[StopService]服务并未运行,status.dwCurrentState:%d",status.dwCurrentState);
+		TRACE("GetLastError:%d",GetLastError());
 	    ::CloseServiceHandle( hSvc);
 	    ::CloseServiceHandle( hSC);
 		return true;
@@ -384,28 +444,99 @@ bool CDrXu_AppDlg::StopService(void)
 void CDrXu_AppDlg::OnBnClickedOk()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	/* 打包：输入缓冲，输出缓冲，IOCONTROL WORD */
-	UCHAR InputBuffer[10];
-    UCHAR OutputBuffer[10];
+	UCHAR InputBuffer[10] = {0};
+	UCHAR OutputBuffer[50] = {0};
+	DWORD dwBytesReturned = 0;
+
+	memcpy(InputBuffer,"Testment",sizeof("Testment"));
+
+	this->SendBufferToDevice(this->g_hDrXuDevice,IOCTL_DRXU_TEST_WRITE,InputBuffer,sizeof(InputBuffer));
+	this->ReceiveBufferFromDevice(this->g_hDrXuDevice,IOCTL_DRXU_TEST_READ,OutputBuffer,sizeof(OutputBuffer),&dwBytesReturned);
+	TRACE("返回数据大小:%d",dwBytesReturned);
+	TRACE("驱动返回信息:%s",OutputBuffer);
+	//CDialogEx::OnOK();
+}
+
+
+bool CDrXu_AppDlg::SaveDeviceHandle(void)
+{
+		//打开设备句柄
+		this->g_hDrXuDevice = CreateFile(SYMBOLIC_LINK_DRXU,
+										  GENERIC_ALL,//GENERIC_READ | GENERIC_WRITE,
+										  0,
+										  NULL,
+										  OPEN_EXISTING,
+										  FILE_ATTRIBUTE_NORMAL,
+										  NULL);
+		if ( this->g_hDrXuDevice != INVALID_HANDLE_VALUE )
+		{
+			//::AfxMessageBox(L"驱动加载成功");
+			TRACE("[SaveDeviceHandle_CreateFile] Success,g_hDrXuDevice is %d",this->g_hDrXuDevice);
+			return true;
+		}
+		else
+		{
+			//::AfxMessageBox(L"无法访问设备对象");
+			TRACE("[CreateFile] Faild in [SaveDeviceHandle],Last Error:%d",GetLastError());
+			TRACE("[CreateFile] Faild in [SaveDeviceHandle],g_hDrXuDevice:%d",this->g_hDrXuDevice);
+			
+			if ( this->StopService() )
+				::AfxMessageBox(L"驱动服务停止");
+			return false;
+		}
+}
+
+
+// 有的机智的小朋友已经看出来了，没错，这就是一个对DeviceIoControl的封装。
+bool CDrXu_AppDlg::SendBufferToDevice(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize)
+{
+	UCHAR OutputBuffer[10];
     DWORD dwOutput;
-    
-	::AfxMessageBox(L"Entered");
-    memset(InputBuffer, 0xAA, 10);
-	BOOL bRet = ::DeviceIoControl(this->g_hDrXuDevice, IOCTL_TEST, InputBuffer, 10, &OutputBuffer, 10, &dwOutput, NULL);
-    if (bRet)
-    {
-        TRACE("Output buffer:%d bytes\n",dwOutput);
-        for (int i=0;i<(int)dwOutput;i++)
-        {
-            TRACE("%02X ",OutputBuffer[i]);
-        }
-        TRACE("\n");
-    }
+
+	TRACE("[SendBuffer]:Entered");
+	//反正sizeof也占不了多少CPU时间
+	memset(OutputBuffer,0,sizeof(OutputBuffer));
+
+	bool bRet = DeviceIoControl(hDevice,dwIoControlCode,lpInBuffer,nInBufferSize,&OutputBuffer,sizeof(OutputBuffer),&dwOutput,NULL);
+	return bRet;
+}
+
+
+// DeviceIoControl的封装，See http://msdn.microsoft.com/en-us/windows/desktop/aa363216(v=vs.85).aspx For details
+bool CDrXu_AppDlg::ReceiveBufferFromDevice(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned)
+{
+	TRACE("[ReceiveBufferFromDevice]:Entered");
+
+	bool bRet = DeviceIoControl(hDevice,dwIoControlCode,NULL,0,lpOutBuffer,nOutBufferSize,lpBytesReturned,NULL);
+	return bRet;
+}
+
+
+// 创建响应拦截NtLoadDriver内核调用的事件，并向驱动中传递
+bool CDrXu_AppDlg::CreateNtLoadDriverEvent(void)
+{			
+	if ( g_hEventNtLoadDriver == 0 )
+	{
+		//注意这里，这里是调用的CreateEventW!
+		TRACE("[CreateNtLoadDriverEvent]开始创建事件句柄");
+		g_hEventNtLoadDriver = CreateEvent(NULL, //安全级别不设置
+										  TRUE,  //手动重置
+										  FALSE, //初始值，event为False
+										  NtLoadDriverEventName); //事件名称
+		if( g_hEventNtLoadDriver == INVALID_HANDLE_VALUE )
+		{
+			TRACE("[CreateNtLoadDriverEvent]:创建g_hEventNtLoadDriver失败");
+			TRACE("GetLastError:%d",GetLastError());
+			return false;
+		}
+		else
+		{
+			return true;												
+		}
+	}
 	else
 	{
-		TRACE("[DeviceIoControl]bRet faild, value is %d, ",bRet);
-		TRACE("[DeviceIoControl]GetLastError() is %d",GetLastError());
-		TRACE("g_hDrXuDevice value is %d",this->g_hDrXuDevice);
+		TRACE("[CreateNtLoadDriverEvent]事件句柄已经创建，g_hEventNtLoadDriver:%d",g_hEventNtLoadDriver);
+		return true;
 	}
-	//CDialogEx::OnOK();
 }

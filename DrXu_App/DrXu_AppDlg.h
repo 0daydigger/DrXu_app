@@ -41,4 +41,12 @@ private:
 	HANDLE g_hDrXuDevice;
 public:
 	afx_msg void OnBnClickedOk();
+	bool SaveDeviceHandle(void);
+private:
+	// 有的机智的小朋友已经看出来了，没错，这就是一个对DeviceIoControl的封装。
+	bool SendBufferToDevice(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize);
+	// DeviceIoControl的封装，See http://msdn.microsoft.com/en-us/windows/desktop/aa363216(v=vs.85).aspx For details
+	bool ReceiveBufferFromDevice(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned);
+	// 创建响应拦截NtLoadDriver内核调用的事件，并向驱动中传递
+	bool CreateNtLoadDriverEvent(void);
 };
