@@ -95,6 +95,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
+    <None Include="res\About_Dialog_Icon.bmp" />
     <None Include="res\DrXu_App.ico" />
     <None Include="res\DrXu_App.rc2" />
   </ItemGroup>

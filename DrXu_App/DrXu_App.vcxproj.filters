@@ -22,6 +22,9 @@
     <None Include="res\DrXu_App.ico">
       <Filter>资源文件</Filter>
     </None>
+    <None Include="res\About_Dialog_Icon.bmp">
+      <Filter>资源文件</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DrXu_App.h">
